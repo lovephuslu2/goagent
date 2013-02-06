@@ -1193,7 +1193,13 @@ class GAEProxyHandler(object):
         if need_forward:
             self.handle_method_forward()
         else:
-            self.handle_method_urlfetch()
+            if common.FIRST_SWITCH or common.NEED_SWITCH :
+                self.handle_method_urlfetch()
+            else :
+                error_html = self._error_html('503', 'Over Quota', 'All APPID Over Quota,Please Wait Some Time')
+                self.sock.sendall('HTTP/1.0 503\r\nContent-Type: text/html\r\n\r\n' + error_html)
+                logging.error('All APPID Over Quota,Please Wait Some Time')
+                return
 
     def handle_method_forward(self):
         """Direct http forward"""
