@@ -806,7 +806,11 @@ class Common(object):
 
         self.HOSTS                = dict((k, tuple(v.split('|')) if v else tuple()) for k, v in self.CONFIG.items('hosts'))
 
-        random.shuffle(self.GAE_APPIDS)
+        #random.shuffle(self.GAE_APPIDS)
+        self.FIRST_APPID = self.GAE_APPIDS[0]
+        self.NEED_SWITCH   = True
+        self.FIRST_SWITCH  = True
+
         self.GAE_FETCHSERVER = '%s://%s.appspot.com%s?' % (self.GOOGLE_MODE, self.GAE_APPIDS[0], self.GAE_PATH)
 
     def info(self):
@@ -1267,10 +1271,33 @@ class GAEProxyHandler(object):
                 common.GAE_FETCHSERVER = '%s://%s.appspot.com%s?' % (common.GOOGLE_MODE, common.GAE_APPIDS[0], common.GAE_PATH)
             # appid over qouta, switch to next appid
             if response.app_status == 503:
-                common.GAE_APPIDS.append(common.GAE_APPIDS.pop(0))
-                common.GAE_FETCHSERVER = '%s://%s.appspot.com%s?' % (common.GOOGLE_MODE, common.GAE_APPIDS[0], common.GAE_PATH)
-                http.dns[urlparse.urlparse(common.GAE_FETCHSERVER).netloc] = common.GOOGLE_HOSTS
-                logging.info('APPID Over Quota,Auto Switch to [%s]' % (common.GAE_APPIDS[0]))
+                if common.FIRST_SWITCH:
+                    common.FIRST_SWITCH = False
+                    common.GAE_APPIDS.append(common.GAE_APPIDS.pop(0))
+                    common.GAE_FETCHSERVER = '%s://%s.appspot.com%s?' % (common.GOOGLE_MODE, common.GAE_APPIDS[0], common.GAE_PATH)
+                    http.dns[urlparse.urlparse(common.GAE_FETCHSERVER).netloc] = common.GOOGLE_HOSTS
+                    logging.info('APPID Over Quota,Auto Switch to [%s]' % (common.GAE_APPIDS[0]))
+                    self.handle_method_urlfetch()
+                    return
+                if common.NEED_SWITCH:
+                    common.GAE_APPIDS.append(common.GAE_APPIDS.pop(0))
+                    if common.GAE_APPIDS[0] != common.FIRST_APPID:
+                        common.GAE_FETCHSERVER = '%s://%s.appspot.com%s?' % (common.GOOGLE_MODE, common.GAE_APPIDS[0], common.GAE_PATH)
+                        http.dns[urlparse.urlparse(common.GAE_FETCHSERVER).netloc] = common.GOOGLE_HOSTS
+                        logging.info('APPID Over Quota,Auto Switch to [%s]' % (common.GAE_APPIDS[0]))
+                        self.handle_method_urlfetch()
+                        return
+                    else :
+                        common.NEED_SWITCH = False
+                        error_html = self._error_html('503', 'Over Quota', 'All APPID Over Quota,Please Wait Some Time')
+                        self.sock.sendall('HTTP/1.0 503\r\nContent-Type: text/html\r\n\r\n' + error_html)
+                        logging.error('All APPID Over Quota,Please Wait Some Time')
+                        return
+                else :
+                    error_html = self._error_html('503', 'Over Quota', 'All APPID Over Quota,Please Wait Some Time')
+                    self.sock.sendall('HTTP/1.0 503\r\nContent-Type: text/html\r\n\r\n' + error_html)
+                    logging.error('All APPID Over Quota,Please Wait Some Time')
+                    return
             # bad request, disable CRLF injection
             if response.app_status in (400, 405):
                 http.crlf = 0
